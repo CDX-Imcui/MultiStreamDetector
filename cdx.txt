@@ -1,18 +1,46 @@
 YOLOv8-TensorRT
 
-/opt/TensorRT-8.6.1.6/bin/trtexec --onnx=yolov8s.onnx --saveEngine=yolov8s.engine --fp16  --minShapes=images:1x3x640x640   --optShapes=images:4x3x640x640  --maxShapes=images:8x3x640x640
+python export-det.py --weights yolov8s.pt --iou-thres 0.65 --conf-thres 0.25 --topk 100 --opset 11  --input-shape 32 3 640 640 --device cuda:0
+查看
+python -c "import onnx; m=onnx.load('yolov8s.onnx'); print(m.graph.input[0].name)"
+images
+
+###################
+import onnx
+import onnx_graphsurgeon as gs
+import numpy as np
+
+# 转换
+model = onnx.load("yolov8s.onnx")
+graph = gs.import_onnx(model)
+
+# 处理常量节点中的int64类型
+for tensor in graph.tensors().values():
+    if tensor.dtype == np.int64:
+        tensor.values = tensor.values.astype(np.int32) if tensor.values is not None else None
+        tensor.dtype = np.int32
+
+# 处理节点属性中的int64类型
+for node in graph.nodes:
+    for i, (key, tensor) in enumerate(node.attrs.items()):
+        if isinstance(tensor, np.ndarray) and tensor.dtype == np.int64:
+            node.attrs[key] = tensor.astype(np.int32)
+
+graph.cleanup()
+onnx.save(gs.export_onnx(graph), "yolov8s.onnx")
+###################
+
+转换
+/opt/TensorRT-8.6.1.6/bin/trtexec --onnx=yolov8s.onnx --saveEngine=yolov8s.engine --fp16  --minShapes=images:1x3x640x640   --optShapes=images:16x3x640x640  --maxShapes=images:32x3x640x640  --staticPlugins=/opt/TensorRT-8.6.1.6/lib/libnvinfer_plugin.so
+
     测试：/opt/TensorRT-8.6.1.6/bin/trtexec --onnx=yolov8s.onnx
     测试：/opt/TensorRT-8.6.1.6/bin/trtexec --loadEngine=yolov8s.engine
-    验证是否真的支持 batch: /opt/TensorRT-8.6.1.6/bin/trtexec --loadEngine=yolov8s.engine --shapes=images:8x3x640x640
+    验证是否真的支持 batch: /opt/TensorRT-8.6.1.6/bin/trtexec --loadEngine=yolov8s.engine --shapes=images:16x3x640x640
 
 "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\TensorRT-8.6.1.6\bin\trtexec.exe"
 
 
-
-context->setBindingDimensions(0, Dims4{B, 3, 640, 640}); // 设置实际 batch
-
 用法：
-
 # infer image
 ./MultiStreamDetector yolov8s.engine data/bus.jpg
 # infer images

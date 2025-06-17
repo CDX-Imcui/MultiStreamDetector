@@ -18,12 +18,18 @@ public:
      * @brief 构造函数，加载TensorRT引擎文件
      * @param engine_file_path TensorRT引擎文件路径
      */
-    explicit YOLOv8(const std::string &engine_file_path);
+    explicit YOLOv8(const std::string &engine_file_path, int stream_id = 0);
 
     /**
      * @brief 析构函数，释放资源
      */
     ~YOLOv8();
+
+
+    // 获取当前流的方法
+    cudaStream_t getStream() const {
+        return this->stream;
+    }
 
     /**
      * @brief 创建推理管道并准备资源
@@ -58,7 +64,7 @@ public:
      * @param size 目标大小
      */
     void letterbox(const cv::Mat &image, cv::Mat &out, cv::Size &size);
-    
+
     /**
      * @brief 批量图像预处理，执行letterbox操作
      * @param images 输入图像列表
@@ -71,7 +77,7 @@ public:
      * @brief 执行模型推理
      */
     void infer();
-    
+
     /**
      * @brief 执行批量模型推理
      * @param batch_size 批量大小
@@ -83,18 +89,20 @@ public:
      * @param objs 存储检测到的目标对象
      */
     void postprocess(std::vector<Object> &objs);
-    
+
     /**
      * @brief 批量后处理，解析模型输出为多张图像的检测结果
      * @param batch_objs 存储每张图像检测到的目标对象
      * @param batch_size 批量大小
      */
-    void postprocess_batch(std::vector<std::vector<Object>> &batch_objs, int batch_size);
+    void postprocess_batch(std::vector<std::vector<Object> > &batch_objs, int batch_size);
 
     std::vector<bool> createClassFilter(const std::vector<std::string> &classNames,
                                         const std::vector<std::string> &targetClasses);
 
     void filterObjectsByClass(std::vector<Object> &objects);
+
+    void filterObjectsByClassBatch(std::vector<std::vector<Object> > &batch_objects);
 
 
     /**
@@ -129,10 +137,18 @@ private:
     cudaStream_t stream = nullptr; ///< CUDA流
     Logger gLogger{nvinfer1::ILogger::Severity::kERROR}; ///< TensorRT日志记录器
     std::vector<bool> filter = std::vector<bool>(80, false);
-
 };
 
-inline YOLOv8::YOLOv8(const std::string &engine_file_path) {
+// inline void checkRuntime(cudaError_t code, const char *file = __FILE__, int line = __LINE__) {
+//     if (code != cudaSuccess) {
+//         const char *err_name = cudaGetErrorName(code);
+//         const char *err_message = cudaGetErrorString(code);
+//         printf("CUDA Runtime Error [%s:%d]: %s(%s)\n", file, line, err_name, err_message);
+//         exit(-1);
+//     }
+// }
+
+inline YOLOv8::YOLOv8(const std::string &engine_file_path,int stream_id) {
     // 打开TensorRT引擎文件
     std::ifstream file(engine_file_path, std::ios::binary);
     //assert 是 C++ 中的断言宏，用于在调试时检查某个条件是否为真。
@@ -162,12 +178,23 @@ inline YOLOv8::YOLOv8(const std::string &engine_file_path) {
     assert(this->engine != nullptr);
     delete[] trtModelStream;
 
-    // 创建执行上下文
+    // 创建独立的执行上下文
+#ifdef TRT_10
+    this->context = this->engine->createExecutionContext(1); // 使用标志1表示独立上下文
+#else
     this->context = this->engine->createExecutionContext();
+#endif
     assert(this->context != nullptr);
 
-    // 创建CUDA流，用于异步执行
-    cudaStreamCreate(&this->stream);
+    // 使用特定ID创建非阻塞CUDA流 TODO
+    std::string stream_name = "yolov8_stream_" + std::to_string(stream_id);
+    CHECK(cudaStreamCreateWithFlags(&this->stream, cudaStreamNonBlocking));
+#if CUDA_VERSION >= 11000
+    cudaStreamAttrValue attrValue;
+    attrValue.nameInfo.name = stream_name.c_str();
+    CHECK(cudaStreamSetAttribute(this->stream, cudaStreamAttributeName, &attrValue));
+#endif
+    // cudaStreamCreate(&this->stream);
 
     // 获取绑定数量，适配不同TensorRT版本
 #ifdef TRT_10
@@ -228,6 +255,7 @@ inline YOLOv8::YOLOv8(const std::string &engine_file_path) {
         }
     }
 }
+
 
 inline YOLOv8::~YOLOv8() {
     // 根据TensorRT版本不同，使用不同方式释放资源
@@ -432,6 +460,8 @@ inline void YOLOv8::copy_from_Mat(const cv::Mat &image, cv::Size &size) {
 inline void YOLOv8::copy_from_Mat_batch(const std::vector<cv::Mat> &images, cv::Size &size) {
     // 声明一个临时变量存放预处理后的图像数据
     std::vector<cv::Mat> nchw_batch;
+    // 清空之前批次的预处理参数
+    this->pparams.clear();
 
     // 获取模型的输入尺寸
     auto &in_binding = this->input_bindings[0];
@@ -446,12 +476,16 @@ inline void YOLOv8::copy_from_Mat_batch(const std::vector<cv::Mat> &images, cv::
     cv::Mat nchw;
     nchw.create({static_cast<int>(images.size()), 3, size.height, size.width}, CV_32F);
 
-    // 将预处理后的多张图像数据合并并拷贝到GPU设备内存
-    float* dst_ptr = (float*)nchw.data;
-    for (const auto& img : nchw_batch) {
+    // 将预处理后的多张图像数据合并
+    float *dst_ptr = (float *) nchw.data;
+    for (const auto &img: nchw_batch) {
         std::memcpy(dst_ptr, img.ptr<float>(), img.total() * sizeof(float));
         dst_ptr += img.total();
     }
+
+    // 将合并后的数据从主机内存拷贝到GPU设备内存 - 这是关键的缺失步骤
+    CHECK(cudaMemcpyAsync(
+        this->device_ptrs[0], nchw.ptr<float>(), nchw.total() * sizeof(float), cudaMemcpyHostToDevice, this->stream));
 
     // 根据TensorRT版本不同，设置输入维度
 #ifdef TRT_10
@@ -459,7 +493,9 @@ inline void YOLOv8::copy_from_Mat_batch(const std::vector<cv::Mat> &images, cv::
     this->context->setInputShape(name, nvinfer1::Dims{4, {static_cast<int>(images.size()), 3, size.height, size.width}});
     this->context->setTensorAddress(name, this->device_ptrs[0]);
 #else
-    this->context->setBindingDimensions(0, nvinfer1::Dims{4, {static_cast<int>(images.size()), 3, height, width}});
+    this->context->setBindingDimensions(0, nvinfer1::Dims{
+                                            4, {static_cast<int>(images.size()), 3, size.height, size.width}
+                                        });
 #endif
 }
 
@@ -588,7 +624,8 @@ inline void YOLOv8::infer(int batch_size) {
     // 将推理结果从GPU设备内存拷贝回主机内存
     for (int i = 0; i < this->num_outputs; i++) {
         // 计算批处理后的输出大小
-        size_t osize = this->output_bindings[i].size * this->output_bindings[i].dsize * batch_size / this->output_bindings[i].dims.d[0];
+        size_t osize = this->output_bindings[i].size * this->output_bindings[i].dsize * batch_size / this->
+                       output_bindings[i].dims.d[0];
         CHECK(cudaMemcpyAsync(
             this->host_ptrs[i], this->device_ptrs[i + this->num_inputs], osize, cudaMemcpyDeviceToHost, this->stream));
     }
@@ -643,7 +680,7 @@ inline void YOLOv8::postprocess(std::vector<Object> &objs) {
     }
 }
 
-inline void YOLOv8::postprocess_batch(std::vector<std::vector<Object>> &batch_objs, int batch_size) {
+inline void YOLOv8::postprocess_batch(std::vector<std::vector<Object> > &batch_objs, int batch_size) {
     // 清空并预分配输出对象列表
     batch_objs.clear();
     batch_objs.resize(batch_size);
@@ -654,45 +691,33 @@ inline void YOLOv8::postprocess_batch(std::vector<std::vector<Object>> &batch_ob
     auto *scores = static_cast<float *>(this->host_ptrs[2]); // 置信度分数数组
     int *labels = static_cast<int *>(this->host_ptrs[3]); // 类别标签数组
 
-    // 遍历每个批次中的所有检测到的目标
+    int max_det = this->output_bindings[1].dims.d[1]; // 从binding信息获取最大检测数
+
     for (int b = 0; b < batch_size; b++) {
-        // 获取当前批次的预处理参数，用于还原原始图像坐标
-        auto &dw = this->pparams[b].dw; // 宽度方向填充量
-        auto &dh = this->pparams[b].dh; // 高度方向填充量
-        auto &width = this->pparams[b].width; // 原始图像宽度
-        auto &height = this->pparams[b].height; // 原始图像高度
-        auto &ratio = this->pparams[b].ratio; // 缩放比例
+        PreParam &pparam = this->pparams[b];
+        auto &dw = pparam.dw, &dh = pparam.dh, &width = pparam.width, &height = pparam.height, &ratio = pparam.ratio;
 
-        // 指向当前批次边界框坐标的起始指针
-        float *batch_ptr = boxes + b * num_dets[0] * 4;
+        int num_detections_for_this_image = num_dets[b]; // 使用当前图片的检测数量
 
-        // 遍历当前批次中的所有检测目标
-        for (int i = 0; i < num_dets[0]; i++) {
-            // 指向当前边界框坐标的指针
-            float *ptr = batch_ptr + i * 4;
+        // 计算指向当前图片数据的指针
+        float *p_boxes_for_this_image = boxes + b * max_det * 4;
+        float *p_scores_for_this_image = scores + b * max_det;
+        int *p_labels_for_this_image = labels + b * max_det;
 
-            // 获取边界框的左上角和右下角坐标，并减去填充量
-            float x0 = *ptr++ - dw; // 左上角x坐标
-            float y0 = *ptr++ - dh; // 左上角y坐标
-            float x1 = *ptr++ - dw; // 右下角x坐标
-            float y1 = *ptr - dh; // 右下角y坐标
+        for (int i = 0; i < num_detections_for_this_image; i++) {
+            float *ptr = p_boxes_for_this_image + i * 4;
+            float x0 = (*ptr++ - dw) * ratio;
+            float y0 = (*ptr++ - dh) * ratio;
+            float x1 = (*ptr++ - dw) * ratio;
+            float y1 = (*ptr - dh) * ratio;
 
-            // 将坐标转换回原始图像尺寸，并确保不超出图像边界
-            x0 = clamp(x0 * ratio, 0.f, width);
-            y0 = clamp(y0 * ratio, 0.f, height);
-            x1 = clamp(x1 * ratio, 0.f, width);
-            y1 = clamp(y1 * ratio, 0.f, height);
-
-            // 创建检测对象并填充信息
             Object obj;
-            obj.rect.x = x0; // 边界框左上角x坐标
-            obj.rect.y = y0; // 边界框左上角y坐标
-            obj.rect.width = x1 - x0; // 边界框宽度
-            obj.rect.height = y1 - y0; // 边界框高度
-            obj.prob = *(scores + b * num_dets[0] + i); // 置信度分数
-            obj.label = *(labels + b * num_dets[0] + i); // 类别标签
-
-            // 将检测对象添加到当前批次的结果列表
+            obj.rect.x = clamp(x0, 0.f, width);
+            obj.rect.y = clamp(y0, 0.f, height);
+            obj.rect.width = clamp(x1, 0.f, width) - obj.rect.x;
+            obj.rect.height = clamp(y1, 0.f, height) - obj.rect.y;
+            obj.prob = p_scores_for_this_image[i];
+            obj.label = p_labels_for_this_image[i];
             batch_objs[b].push_back(obj);
         }
     }
@@ -727,6 +752,12 @@ inline void YOLOv8::filterObjectsByClass(std::vector<Object> &objects) {
                              });
 
     objects.erase(it, objects.end());
+}
+
+inline void YOLOv8::filterObjectsByClassBatch(std::vector<std::vector<Object> > &batch_objects) {
+    for (auto &objects: batch_objects) {
+        filterObjectsByClass(objects);
+    }
 }
 
 inline void YOLOv8::draw_objects(cv::Mat &res,

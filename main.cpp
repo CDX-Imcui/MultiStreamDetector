@@ -57,7 +57,21 @@ const std::vector<std::vector<unsigned int> > COLORS = {
 //         }
 //     }
 // }
-
+void calculate_time(const std::string &info, const std::chrono::system_clock::time_point &start,
+                    const std::chrono::system_clock::time_point &end) {
+    auto ms = (double) std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.;
+    if (ms >= 60000.0) {
+        int total_ms = static_cast<int>(ms);
+        int minutes = total_ms / 60000;
+        int seconds = (total_ms % 60000) / 1000;
+        int millis = total_ms % 1000;
+        printf("%s: %d min %d s %d ms\n", info.c_str(), minutes, seconds, millis);
+    } else if (ms >= 1000.0) {
+        printf("%s: %.3f s\n", info.c_str(), ms / 1000.0);
+    } else {
+        printf("%s: %.3f ms\n", info.c_str(), ms);
+    }
+}
 
 int main(int argc, char **argv) {
     // const std::string engine_file_path{argv[1]};
@@ -67,6 +81,7 @@ int main(int argc, char **argv) {
     //     return -1;
     // }
     const std::string engine_file_path{"../models/yolov8s.engine"};
+    // const std::string engine_file_path{"../yolov8s.engine"};
     const fs::path path{"../data/1.mp4"};
     std::vector<cv::String> imagePathList;
     bool isVideo{false};
@@ -92,7 +107,7 @@ int main(int argc, char **argv) {
     if (isVideo) {
         // 有界队列容量
         // BoundedQueue<cv::Mat> queue(1500);
-        tbb::concurrent_bounded_queue<cv::Mat> queue; ///  Intel TBB
+        tbb::concurrent_bounded_queue<std::vector<cv::Mat> > queue; ///  Intel TBB
         // queue.set_capacity(10000); // 设置最大容量
         tbb::concurrent_bounded_queue<ImageSaveItem> saveQueue;
         std::atomic<bool> writerDone(false);
@@ -122,55 +137,45 @@ int main(int argc, char **argv) {
 
         auto start = std::chrono::system_clock::now();
         // 启动生产者线程
-        std::thread producer(frameProducer, path, std::ref(queue), std::ref(done),3);
+        int batchSize = 1;
+        std::thread producer(frameProducer, path, std::ref(queue), std::ref(done), batchSize);
         // 启动消费者线程池
         // int numThreads = static_cast<int>(std::thread::hardware_concurrency()) - 1;
-        int numThreads = 5;
-        // if (numThreads < 1) numThreads = 1;
+        int inference_Threads = 1;
         std::vector<std::thread> workers;
-        for (int i = 0; i < numThreads; ++i) {
-            workers.emplace_back(workerConsumer, i,
+        for (int id = 1; id <= inference_Threads; ++id)
+            workers.emplace_back(workerConsumer, id,
                                  std::ref(engine_file_path), std::ref(queue), std::ref(done),
                                  std::ref(frameCounter), inputSize, videoName, resultDir,
-                                 std::ref(CLASS_NAMES), std::ref(COLORS), std::ref(targetClasses),
-                                 std::ref(saveQueue), std::ref(writerDone));
-        }
-        // 启动写入线程
+                                 std::ref(CLASS_NAMES), std::ref(targetClasses), std::ref(saveQueue));
+
         std::vector<std::thread> writerThreads;
-        int writerThreadCount = 5; // 写入线程数量
+        int writerThreadCount = 7; // 写入线程数量
         for (int i = 0; i < writerThreadCount; ++i)
-            writerThreads.emplace_back(imageWriterThread, std::ref(saveQueue), std::ref(writerDone));
-        // 主线程显示进度
-        while (!done || frameCounter.load() < totalFrames) {
+            writerThreads.emplace_back(imageWriterThread, std::ref(saveQueue), std::ref(writerDone),
+                                       std::ref(CLASS_NAMES), std::ref(COLORS));
+
+        while (!done || frameCounter.load() < totalFrames) {// 主线程显示进度
             safe_print(PrintMode::INFO, "\r已处理: " + std::to_string(frameCounter.load()) + " 帧", true);
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
+        calculate_time("inference cost", start, std::chrono::system_clock::now());
 
-        producer.join();// 确保生产者线程完成
+        producer.join(); // 确保生产者线程完成
         safe_print("读取视频线程完成...");
         for (auto &w: workers)
             w.join();
         safe_print("推理完成...，等待图像写入线程完成...");
 
-        writerDone = true;// 设置writerDone标志，通知写入线程可以退出
+        writerDone = true; // 设置writerDone标志，通知写入线程可以退出
         for (auto &w: writerThreads)
             w.join();
         safe_print("save线程完成");
 
         auto end = std::chrono::system_clock::now();
         safe_print("处理完成，总共帧数: " + std::to_string(frameCounter.load()) + " 帧");
-        auto ms = (double) std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.;
-        if (ms >= 60000.0) {
-            int total_ms = static_cast<int>(ms);
-            int minutes = total_ms / 60000;
-            int seconds = (total_ms % 60000) / 1000;
-            int millis = total_ms % 1000;
-            printf("cost: %d min %d s %d ms\n", minutes, seconds, millis);
-        } else if (ms >= 1000.0) {
-            printf("cost: %.3f s\n", ms / 1000.0);
-        } else {
-            printf("cost: %.3f ms\n", ms);
-        }
+        calculate_time("all time cost", start, end);
+
         // 确保所有窗口都关闭
         cv::destroyAllWindows();
         // 添加短暂延时使窗口事件能被处理
