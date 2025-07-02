@@ -1,4 +1,17 @@
-/usr/bin/cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" -S /mnt/e/workspace/C++/MultiStreamDetector -B /mnt/e/workspace/C++/MultiStreamDetector/cmake-build-release-wsl
+/usr/bin/cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" -S /root/MultiStreamDetector -B /root/MultiStreamDetector/cmake-build-release-wsl
+-- The CXX compiler identification is GNU 11.4.0
+-- The CUDA compiler identification is NVIDIA 11.8.89
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting CUDA compiler ABI info
+-- Detecting CUDA compiler ABI info - done
+-- Check for working CUDA compiler: /usr/local/cuda/bin/nvcc - skipped
+-- Detecting CUDA compile features
+-- Detecting CUDA compile features - done
+-- Found CUDA: /usr/local/cuda (found version "11.8") 
 -- CUDA_LIBRARIES:
    /usr/local/cuda/lib64/libcudart.so
 
@@ -8,6 +21,7 @@
 -- CUDA_LIB_DIR:
    /usr/local/cuda/lib64
 
+-- Found OpenCV: /usr (found version "4.5.4") 
 -- OpenCV_LIBS:
    opencv_calib3d;opencv_core;opencv_dnn;opencv_features2d;opencv_flann;opencv_highgui;opencv_imgcodecs;opencv_imgproc;opencv_ml;opencv_objdetect;opencv_photo;opencv_stitching;opencv_video;opencv_videoio;opencv_alphamat;opencv_aruco;opencv_barcode;opencv_bgsegm;opencv_bioinspired;opencv_ccalib;opencv_datasets;opencv_dnn_objdetect;opencv_dnn_superres;opencv_dpm;opencv_face;opencv_freetype;opencv_fuzzy;opencv_hdf;opencv_hfs;opencv_img_hash;opencv_intensity_transform;opencv_line_descriptor;opencv_mcc;opencv_optflow;opencv_phase_unwrapping;opencv_plot;opencv_quality;opencv_rapid;opencv_reg;opencv_rgbd;opencv_saliency;opencv_shape;opencv_stereo;opencv_structured_light;opencv_superres;opencv_surface_matching;opencv_text;opencv_tracking;opencv_videostab;opencv_viz;opencv_wechat_qrcode;opencv_ximgproc;opencv_xobjdetect;opencv_xphoto
 
@@ -17,6 +31,7 @@
 -- OpenCV_INCLUDE_DIRS:
    /usr/include/opencv4
 
+-- Found TensorRT: /usr/lib/libnvinfer.so (found version "8.6.1") 
 -- TensorRT_LIBRARIES:
    /usr/lib/libnvinfer.so;/usr/lib/libnvinfer_plugin.so
 
@@ -24,17 +39,17 @@
    /mnt/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8/include
 
 -- TensorRT_LIB_DIR:
-   
+   /usr/lib
 
 -- ALL_INCLUDE_DIRS:
-   /usr/local/cuda/include;/usr/include/opencv4;/mnt/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8/include;/mnt/e/workspace/C++/MultiStreamDetector/include
+   /usr/local/cuda/include;/usr/include/opencv4;/mnt/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8/include;/root/MultiStreamDetector/include
 
 -- ALL_LIBS:
    /usr/local/cuda/lib64/libcudart.so;opencv_calib3d;opencv_core;opencv_dnn;opencv_features2d;opencv_flann;opencv_highgui;opencv_imgcodecs;opencv_imgproc;opencv_ml;opencv_objdetect;opencv_photo;opencv_stitching;opencv_video;opencv_videoio;opencv_alphamat;opencv_aruco;opencv_barcode;opencv_bgsegm;opencv_bioinspired;opencv_ccalib;opencv_datasets;opencv_dnn_objdetect;opencv_dnn_superres;opencv_dpm;opencv_face;opencv_freetype;opencv_fuzzy;opencv_hdf;opencv_hfs;opencv_img_hash;opencv_intensity_transform;opencv_line_descriptor;opencv_mcc;opencv_optflow;opencv_phase_unwrapping;opencv_plot;opencv_quality;opencv_rapid;opencv_reg;opencv_rgbd;opencv_saliency;opencv_shape;opencv_stereo;opencv_structured_light;opencv_superres;opencv_surface_matching;opencv_text;opencv_tracking;opencv_videostab;opencv_viz;opencv_wechat_qrcode;opencv_ximgproc;opencv_xobjdetect;opencv_xphoto;/usr/lib/libnvinfer.so;/usr/lib/libnvinfer_plugin.so
 
 -- ALL_LIB_DIRS:
-   /usr/local/cuda/lib64
+   /usr/local/cuda/lib64;/usr/lib
 
 -- Configuring done
 -- Generating done
--- Build files have been written to: /mnt/e/workspace/C++/MultiStreamDetector/cmake-build-release-wsl
+-- Build files have been written to: /root/MultiStreamDetector/cmake-build-release-wsl

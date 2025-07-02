@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/mnt/e/workspace/C++/MultiStreamDetector/main.cpp" "CMakeFiles/MultiStreamDetector.dir/main.cpp.o" "gcc" "CMakeFiles/MultiStreamDetector.dir/main.cpp.o.d"
+  "/root/MultiStreamDetector/main.cpp" "CMakeFiles/MultiStreamDetector.dir/main.cpp.o" "gcc" "CMakeFiles/MultiStreamDetector.dir/main.cpp.o.d"
   )
 
 # Targets to which this target links.

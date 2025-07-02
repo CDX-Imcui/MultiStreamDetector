@@ -4,7 +4,7 @@
 # compile CXX with /usr/bin/c++
 CXX_DEFINES = 
 
-CXX_INCLUDES = -I/mnt/e/workspace/C++/MultiStreamDetector/include -I/usr/local/cuda/include -I"/mnt/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8/include" -isystem /usr/include/opencv4
+CXX_INCLUDES = -I/root/MultiStreamDetector/include -I/usr/local/cuda/include -I"/mnt/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8/include" -isystem /usr/include/opencv4
 
 CXX_FLAGS =  -std=c++14 -O3 -O3 -DNDEBUG -std=gnu++14
 

@@ -145,17 +145,19 @@ void safe_print(std::string args) {
     safe_print(PrintMode::INFO, args, false);
 }
 
-// struct Batch {
-//     std::vector<cv::Mat> frameBatch;
-//     int size = 1; // 默认批大小为1
-// };
+struct Batch {
+    std::vector<cv::Mat> batch;
+    std::vector<int> frame;
+    std::string mark;
+};
 
 // 生产者：读取视频帧
 void frameProducer(const std::string &videoPath,
-                   tbb::concurrent_bounded_queue<std::vector<cv::Mat> > &queue,
+                   tbb::concurrent_bounded_queue<Batch> &queue,
                    std::atomic<bool> &done,
-                   int batchSize = 1) {
-    cv::VideoCapture cap(videoPath);
+                   int batchSize,
+                   const std::string& mark) {
+    cv::VideoCapture cap(videoPath, cv::CAP_FFMPEG);// 强制使用FFMPEG后端
     int totalFrames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
     int pushedFrames = 0;
     cv::Mat image;
@@ -165,21 +167,26 @@ void frameProducer(const std::string &videoPath,
         done = true;
         return;
     }
-    std::vector<cv::Mat> batch;
-    batch.reserve(batchSize);
+    Batch batchData;
+    batchData.mark = mark;
+
+    // std::vector<cv::Mat> batch;
+    batchData.batch.reserve(batchSize);
 
     while (true) {
         // 打包一个batch
-        batch.clear();
+        batchData.batch.clear();
         for (int i = 1; i <= batchSize; ++i) {
             if (!cap.read(image))
                 break; // 视频读取完毕
             pushedFrames++;
-            batch.push_back(std::move(resizeKeepAspectRatio(image, 640)));
+            batchData.frame.push_back(pushedFrames);
+            batchData.batch.push_back(std::move(resizeKeepAspectRatio(image, 640)));
         }
-        if (batch.empty()) // 如果没有读到任何帧，说明视频已结束
+        if (batchData.batch.empty()) // 如果没有读到任何帧，说明视频已结束
             break;
-        queue.push(std::move(batch)); // 使用移动语义避免拷贝
+        batchData.mark = mark;
+        queue.push(std::move(batchData)); // 使用移动语义避免拷贝
     }
     safe_print("生产者线程已完成，入队帧数: " + std::to_string(pushedFrames) + "/" + std::to_string(totalFrames) + " 帧");
     done = true;
@@ -195,11 +202,10 @@ struct ImageSaveItem {
 // 消费者：并发推理并保存结果
 void workerConsumer(int id,
                     const std::string &enginePath,
-                    tbb::concurrent_bounded_queue<std::vector<cv::Mat> > &queue,
+                    tbb::concurrent_bounded_queue<Batch> &queue,
                     std::atomic<bool> &done,
                     std::atomic<int> &frameCounter,
                     cv::Size size,
-                    const std::string &videoName,
                     const std::string &resultDir,
                     const std::vector<std::string> &CLASS_NAMES,
                     const std::vector<std::string> &targetClasses,
@@ -208,7 +214,8 @@ void workerConsumer(int id,
     detector.make_pipe(true);
     detector.createClassFilter(CLASS_NAMES, targetClasses);
 
-    std::vector<cv::Mat> batch;
+    // std::vector<cv::Mat> batch;
+    Batch batchData;
 
     cv::Mat image, res;
     std::vector<std::vector<Object> > batchObjs;
@@ -223,19 +230,20 @@ void workerConsumer(int id,
     fs::create_directories(imageDir);
     while (true) {
         try {
-            batch.clear();
-            if (!queue.try_pop(batch)) {
+            batchData.batch.clear();
+            if (!queue.try_pop(batchData)) {
                 if (done && queue.empty()) break; // 如果队列为空且生产者已结束，跳出收集循环
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 continue;
             }
 
-            if (batch.empty()) {
+            if (batchData.batch.empty()) {
                 if (done)
                     break;
             } else {
-                n = static_cast<int>(batch.size());
-                detector.copy_from_Mat_batch(batch, size);
+                fs::create_directories(imageDir+"/" + batchData.mark);
+                n = static_cast<int>(batchData.batch.size());
+                detector.copy_from_Mat_batch(batchData.batch, size);
                 //
                 auto infer_start = std::chrono::high_resolution_clock::now();
                 detector.infer(n); // 批量推理
@@ -256,9 +264,11 @@ void workerConsumer(int id,
                     objs = batchObjs[i];
 
                     if (!objs.empty()) {
-                        frameName = videoName + "_frame" + std::to_string(currentFrameID) +
-                                    "_Worker" + std::to_string(id) + ".jpg";
-                        saveQueue.push(std::move(ImageSaveItem{objs, std::move(batch[i]), imageDir + "/" + frameName}));
+                        frameName = imageDir +"/" + batchData.mark;
+                        frameName.append("/").append(batchData.mark).append("_frame").append(std::to_string(batchData.frame[i]))
+                                .append("_Worker").append(std::to_string(id)).append(".jpg");
+
+                        saveQueue.push(std::move(ImageSaveItem{objs, std::move(batchData.batch[i]),  frameName}));
                         // 记录结果
                         allFrameObjects.push_back(std::move(objs));
                         frameNames.push_back(frameName);
@@ -287,7 +297,7 @@ inline void imageWriterThread(tbb::concurrent_bounded_queue<ImageSaveItem> &save
         }
         // 先给图片绘制检测结果
         YOLOv8::draw_objects(item.image, item.objs, CLASS_NAMES, COLORS);
-        // cv::imwrite(item.path, item.image); 使用更高效的图像格式和压缩参数
+        // cv::imwrite(item.path, item.image); //使用更高效的图像格式和压缩参数
         cv::imwrite(item.path, item.image, {cv::IMWRITE_JPEG_QUALITY, 90}); // 适度降低质量提高写入速度
     }
 }

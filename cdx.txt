@@ -1,4 +1,5 @@
 YOLOv8-TensorRT
+#git@github.com:CDX-Imcui/MultiStreamDetector.git
 
 python export-det.py --weights yolov8s.pt --iou-thres 0.65 --conf-thres 0.25 --topk 100 --opset 11  --input-shape 32 3 640 640 --device cuda:0
 查看

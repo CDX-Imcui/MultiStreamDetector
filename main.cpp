@@ -73,6 +73,22 @@ void calculate_time(const std::string &info, const std::chrono::system_clock::ti
     }
 }
 
+void videoDetect(const std::string &engine_file_path, const fs::path &video_path,
+                 const std::vector<std::string> &targetClasses, const std::string &resultDir,
+                 int batchSize, int inference_Threads, int writerThreadCount) {
+}
+
+bool isVideo(const fs::path &path) {
+    std::string suffix = path.extension().string();
+    return (suffix == ".mp4" || suffix == ".avi" || suffix == ".m4v" || suffix == ".mpeg" || suffix == ".mov"
+            || suffix == ".mkv");
+}
+
+bool isImage(const fs::path &path) {
+    std::string suffix = path.extension().string();
+    return (suffix == ".jpg" || suffix == ".jpeg" || suffix == ".png");
+}
+
 int main(int argc, char **argv) {
     // const std::string engine_file_path{argv[1]};
     // const fs::path path{argv[2]};
@@ -81,106 +97,103 @@ int main(int argc, char **argv) {
     //     return -1;
     // }
     const std::string engine_file_path{"../models/yolov8s.engine"};
-    // const std::string engine_file_path{"../yolov8s.engine"};
-    const fs::path path{"../data/1.mp4"};
+    std::vector<fs::path> videoPathList{
+        "../data/1.mp4",
+        "../data/2.mp4",
+        "../data/3.mp4",
+        "../data/4.mp4",
+        "../data/5.mp4",
+        "../data/6.mp4",
+        "../data/7.mp4",
+        "../data/8.mp4"
+    };
+    std::vector<std::string> targetClasses = {"person", "car"}; //（）
+    std::string resultDir = "../output"; //（）
+
+
     std::vector<cv::String> imagePathList;
-    bool isVideo{false};
     std::vector<Object> objs;
     cv::Mat res, image;
     cv::Size size = cv::Size{640, 640};
+    int batchSize = 4;
+    int inference_Threads = 2; // 启动消费者线程池
+    int writerThreadCount = 1; // 写入线程
+    tbb::concurrent_bounded_queue<Batch> queue; ///  Intel TBB
+    queue.set_capacity(1200); // 设置队列容量，有必要
+    tbb::concurrent_bounded_queue<ImageSaveItem> saveQueue;
+    std::atomic<bool> writerDone(false);
+    std::atomic<bool> done{false};
+    std::atomic<int> frameCounter{1};
+    cv::Size inputSize{640, 640};
+    int totalFrames = 0;
 
-    if (fs::exists(path)) {
-        std::string suffix = path.extension().string();
-        if (suffix == ".jpg" || suffix == ".jpeg" || suffix == ".png") {
-            imagePathList.push_back(path.string());
-        } else if (suffix == ".mp4" || suffix == ".avi" || suffix == ".m4v" || suffix == ".mpeg" || suffix == ".mov"
-                   || suffix == ".mkv") {
-            isVideo = true;
-        } else {
-            printf("suffix %s is wrong !!!\n", suffix.c_str());
-            std::abort();
+    std::cout << "只检测以下类别: ";
+    for (const auto &cls: targetClasses)
+        std::cout << cls << " ";
+
+    // 准备输出目录
+    if (fs::exists(resultDir)) {
+        for (const auto &entry: fs::directory_iterator(resultDir))
+            fs::remove_all(entry.path());
+    } else fs::create_directories(resultDir);
+
+
+    auto start = std::chrono::system_clock::now();
+    // 启动生产者线程
+    std::vector<std::thread> producers;
+    for (auto &path: videoPathList) {
+        if (isVideo(path)) {
+            cv::VideoCapture cap(path.string());
+            totalFrames += static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+
+            std::string videoName = fs::path(path).filename().string();
+            safe_print("有" + std::to_string(totalFrames) + "帧");
+            producers.emplace_back(frameProducer, path, std::ref(queue), std::ref(done), batchSize, videoName);
         }
-    } else if (fs::is_directory(path)) {
-        cv::glob(path.string() + "/*.jpg", imagePathList);
     }
 
-    if (isVideo) {
-        // 有界队列容量
-        // BoundedQueue<cv::Mat> queue(1500);
-        tbb::concurrent_bounded_queue<std::vector<cv::Mat> > queue; ///  Intel TBB
-        // queue.set_capacity(10000); // 设置最大容量
-        tbb::concurrent_bounded_queue<ImageSaveItem> saveQueue;
-        std::atomic<bool> writerDone(false);
+    // int numThreads = static_cast<int>(std::thread::hardware_concurrency()) - 1;
+    std::vector<std::thread> workers;
+    for (int id = 1; id <= inference_Threads; ++id)
+        workers.emplace_back(workerConsumer, id,
+                             std::ref(engine_file_path), std::ref(queue), std::ref(done),
+                             std::ref(frameCounter), inputSize, resultDir,
+                             std::ref(CLASS_NAMES), std::ref(targetClasses), std::ref(saveQueue));
 
-        std::atomic<bool> done{false};
-        std::atomic<int> frameCounter{1};
-        cv::Size inputSize{640, 640};
-        std::string videoName = fs::path(path).filename().string();
-        cv::VideoCapture cap(path.string());
-        int totalFrames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
-        safe_print(videoName + "共有" + std::to_string(totalFrames) + "帧");
-        std::vector<std::string> targetClasses = {"person", "car"};
-        // std::vector<std::string> targetClasses = { "car"};
-        std::cout << "只检测以下类别: ";
-        for (const auto &cls: targetClasses)
-            std::cout << cls << " ";
-        // safe_print();
+    std::vector<std::thread> writerThreads;
+    for (int i = 0; i < writerThreadCount; ++i)
+        writerThreads.emplace_back(imageWriterThread, std::ref(saveQueue), std::ref(writerDone),
+                                   std::ref(CLASS_NAMES), std::ref(COLORS));
 
-
-        // 准备输出目录
-        std::string resultDir = "../detection_results/" + videoName;
-        if (fs::exists(resultDir)) {
-            for (const auto &entry: fs::directory_iterator(resultDir))
-                fs::remove_all(entry.path());
-        } else fs::create_directories(resultDir);
-
-
-        auto start = std::chrono::system_clock::now();
-        // 启动生产者线程
-        int batchSize = 1;
-        std::thread producer(frameProducer, path, std::ref(queue), std::ref(done), batchSize);
-        // 启动消费者线程池
-        // int numThreads = static_cast<int>(std::thread::hardware_concurrency()) - 1;
-        int inference_Threads = 1;
-        std::vector<std::thread> workers;
-        for (int id = 1; id <= inference_Threads; ++id)
-            workers.emplace_back(workerConsumer, id,
-                                 std::ref(engine_file_path), std::ref(queue), std::ref(done),
-                                 std::ref(frameCounter), inputSize, videoName, resultDir,
-                                 std::ref(CLASS_NAMES), std::ref(targetClasses), std::ref(saveQueue));
-
-        std::vector<std::thread> writerThreads;
-        int writerThreadCount = 7; // 写入线程数量
-        for (int i = 0; i < writerThreadCount; ++i)
-            writerThreads.emplace_back(imageWriterThread, std::ref(saveQueue), std::ref(writerDone),
-                                       std::ref(CLASS_NAMES), std::ref(COLORS));
-
-        while (!done || frameCounter.load() < totalFrames) {// 主线程显示进度
-            safe_print(PrintMode::INFO, "\r已处理: " + std::to_string(frameCounter.load()) + " 帧", true);
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        calculate_time("inference cost", start, std::chrono::system_clock::now());
-
-        producer.join(); // 确保生产者线程完成
-        safe_print("读取视频线程完成...");
-        for (auto &w: workers)
-            w.join();
-        safe_print("推理完成...，等待图像写入线程完成...");
-
-        writerDone = true; // 设置writerDone标志，通知写入线程可以退出
-        for (auto &w: writerThreads)
-            w.join();
-        safe_print("save线程完成");
-
-        auto end = std::chrono::system_clock::now();
-        safe_print("处理完成，总共帧数: " + std::to_string(frameCounter.load()) + " 帧");
-        calculate_time("all time cost", start, end);
-
-        // 确保所有窗口都关闭
-        cv::destroyAllWindows();
-        // 添加短暂延时使窗口事件能被处理
+    while (!done || frameCounter.load() < totalFrames) {
+        // 主线程显示进度
+        safe_print(PrintMode::INFO, "\r已处理: " + std::to_string(frameCounter.load()) + " 帧", true);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    } else {
+    }
+    calculate_time("inference cost", start, std::chrono::system_clock::now());
+    for (auto &w: producers)
+        w.join(); // 确保生产者线程完成
+    safe_print("读取视频线程完成...");
+    for (auto &w: workers)
+        w.join();
+    safe_print("推理完成...，等待图像写入线程完成...");
+
+    writerDone = true; // 设置writerDone标志，通知写入线程可以退出
+    for (auto &w: writerThreads)
+        w.join();
+    safe_print("image write线程完成");
+
+    auto end = std::chrono::system_clock::now();
+    safe_print("处理完成，总共帧数: " + std::to_string(frameCounter.load()) + " 帧");
+    calculate_time("all time cost", start, end);
+
+    // 确保所有窗口都关闭
+    cv::destroyAllWindows();
+    // 添加短暂延时使窗口事件能被处理
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+
+    if (isImage(videoPathList[0])) {
         auto yolov8 = new YOLOv8(engine_file_path);
         yolov8->make_pipe(true);
         for (auto &p: imagePathList) {
@@ -202,5 +215,6 @@ int main(int argc, char **argv) {
         }
     }
     cv::destroyAllWindows();
+
     return 0;
 }

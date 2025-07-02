@@ -1,4 +1,4 @@
-# Install script for directory: /mnt/e/workspace/C++/MultiStreamDetector
+# Install script for directory: /root/MultiStreamDetector
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -50,5 +50,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/mnt/e/workspace/C++/MultiStreamDetector/cmake-build-release-wsl/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/root/MultiStreamDetector/cmake-build-release-wsl/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

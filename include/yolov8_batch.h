@@ -187,7 +187,7 @@ inline YOLOv8::YOLOv8(const std::string &engine_file_path,int stream_id) {
     assert(this->context != nullptr);
 
     // 使用特定ID创建非阻塞CUDA流 TODO
-    std::string stream_name = "yolov8_stream_" + std::to_string(stream_id);
+    std::string stream_name = "yolo_stream_" + std::to_string(stream_id);
     CHECK(cudaStreamCreateWithFlags(&this->stream, cudaStreamNonBlocking));
 #if CUDA_VERSION >= 11000
     cudaStreamAttrValue attrValue;

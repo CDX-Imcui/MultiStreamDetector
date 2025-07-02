@@ -1,6 +1,6 @@
 CMakeFiles/MultiStreamDetector.dir/main.cpp.o: \
- /mnt/e/workspace/C++/MultiStreamDetector/main.cpp \
- /usr/include/stdc-predef.h /usr/include/opencv4/opencv2/opencv.hpp \
+ /root/MultiStreamDetector/main.cpp /usr/include/stdc-predef.h \
+ /usr/include/opencv4/opencv2/opencv.hpp \
  /usr/include/opencv4/opencv2/opencv_modules.hpp \
  /usr/include/opencv4/opencv2/core.hpp \
  /usr/include/opencv4/opencv2/core/cvdef.h \
@@ -335,7 +335,7 @@ CMakeFiles/MultiStreamDetector.dir/main.cpp.o: \
  /usr/include/opencv4/opencv2/video.hpp \
  /usr/include/opencv4/opencv2/video/tracking.hpp \
  /usr/include/opencv4/opencv2/video/background_segm.hpp \
- /mnt/e/workspace/C++/MultiStreamDetector/include/yolov8_batch.h \
+ /root/MultiStreamDetector/include/yolov8_batch.h \
  /mnt/c/Program\ Files/NVIDIA\ GPU\ Computing\ Toolkit/CUDA/v11.8/include/NvInferPlugin.h \
  /mnt/c/Program\ Files/NVIDIA\ GPU\ Computing\ Toolkit/CUDA/v11.8/include/NvInfer.h \
  /mnt/c/Program\ Files/NVIDIA\ GPU\ Computing\ Toolkit/CUDA/v11.8/include/NvInferLegacyDims.h \
@@ -355,9 +355,9 @@ CMakeFiles/MultiStreamDetector.dir/main.cpp.o: \
  /mnt/c/Program\ Files/NVIDIA\ GPU\ Computing\ Toolkit/CUDA/v11.8/include/NvInferRuntime.h \
  /mnt/c/Program\ Files/NVIDIA\ GPU\ Computing\ Toolkit/CUDA/v11.8/include/NvInferImpl.h \
  /mnt/c/Program\ Files/NVIDIA\ GPU\ Computing\ Toolkit/CUDA/v11.8/include/NvInferPluginUtils.h \
- /mnt/e/workspace/C++/MultiStreamDetector/include/common.hpp \
+ /root/MultiStreamDetector/include/common.hpp \
  /mnt/c/Program\ Files/NVIDIA\ GPU\ Computing\ Toolkit/CUDA/v11.8/include/NvInfer.h \
- /mnt/e/workspace/C++/MultiStreamDetector/include/filesystem.hpp \
+ /root/MultiStreamDetector/include/filesystem.hpp \
  /usr/include/x86_64-linux-gnu/sys/param.h /usr/include/signal.h \
  /usr/include/x86_64-linux-gnu/bits/signum-generic.h \
  /usr/include/x86_64-linux-gnu/bits/signum-arch.h \
@@ -424,8 +424,8 @@ CMakeFiles/MultiStreamDetector.dir/main.cpp.o: \
  /usr/include/c++/11/bits/ranges_base.h \
  /usr/include/c++/11/experimental/bits/lfts_config.h \
  /usr/include/c++/11/experimental/bits/string_view.tcc \
- /mnt/e/workspace/C++/MultiStreamDetector/include/threads.h \
- /usr/include/c++/11/thread /usr/include/c++/11/bits/std_thread.h \
+ /root/MultiStreamDetector/include/threads.h /usr/include/c++/11/thread \
+ /usr/include/c++/11/bits/std_thread.h \
  /usr/include/c++/11/bits/this_thread_sleep.h \
  /usr/include/c++/11/condition_variable /usr/include/c++/11/atomic \
  /usr/include/tbb/concurrent_queue.h \
@@ -536,4 +536,4 @@ CMakeFiles/MultiStreamDetector.dir/main.cpp.o: \
  /usr/include/oneapi/tbb/detail/_exception.h \
  /usr/include/oneapi/tbb/detail/_containers_helpers.h \
  /usr/include/oneapi/tbb/cache_aligned_allocator.h \
- /mnt/e/workspace/C++/MultiStreamDetector/include/yolov8_batch.h
+ /root/MultiStreamDetector/include/yolov8_batch.h

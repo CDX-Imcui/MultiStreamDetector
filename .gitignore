@@ -1,0 +1,8 @@
+# 编辑.gitignore添加以下内容
+/cmake-build-release-wsl
+/data
+*.mp4
+/output
+/cdx.txt
+/信息技术前沿大作业.pdf
+/多路数据分析与处理.docx
